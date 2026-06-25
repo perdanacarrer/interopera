@@ -1,0 +1,15 @@
+Copyright (c) 2026 Oscar Perdana
+
+All rights reserved.
+
+This source code and any associated files are the property of Oscar Perdana. 
+You may view this code on GitHub, but you may not:
+
+- Copy, reproduce, or redistribute it in any form
+- Modify, adapt, or create derivative works
+- Use it in any software or project, commercial or non-commercial
+
+No license is granted for use, modification, or distribution.  
+For permission requests, please contact Oscar Perdana.
+
+Unauthorized use of this code is prohibited and may result in legal action.

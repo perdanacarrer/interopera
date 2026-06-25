@@ -1,0 +1,10 @@
+{
+  "firm_id": "firm_A",
+  "firm_name": "Firm A (Default)",
+  "conventions": {
+    "non_ig_include_fallen_angels": false,
+    "gre_concentration_at_parent": false,
+    "utilization_format": "percent_1dp"
+  },
+  "description": "Default reading of guidelines: non-IG = HY + Structured Credit asset classes only; GRE capped per individual issuer; utilization as 1-decimal percent."
+}

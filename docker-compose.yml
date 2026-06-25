@@ -1,0 +1,18 @@
+services:
+  firm_a:
+    build: .
+    command: python main.py --firm firm_A --no-narrative
+    volumes:
+      - ./reports:/app/reports
+      - ./audit:/app/audit
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+  firm_b:
+    build: .
+    command: python main.py --firm firm_B --no-narrative
+    volumes:
+      - ./reports:/app/reports
+      - ./audit:/app/audit
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}

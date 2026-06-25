@@ -1,0 +1,10 @@
+{
+  "firm_id": "firm_B",
+  "firm_name": "Firm B (House Conventions)",
+  "conventions": {
+    "non_ig_include_fallen_angels": true,
+    "gre_concentration_at_parent": true,
+    "utilization_format": "truncated_bps"
+  },
+  "description": "Firm B house conventions: fallen angels counted in non-IG; GRE grouped at parent issuer; utilization as truncated basis points."
+}
