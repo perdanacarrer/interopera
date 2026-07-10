@@ -1,19 +1,19 @@
 """
-main.py — InterOpera Compliance Report Engine entrypoint.
+main.py — InterOpera Compliance Report Engine
 
 Usage:
-    python main.py --firm firm_A          # Firm A report + reconciliation
-    python main.py --firm firm_B          # Firm B report + reconciliation
-    python main.py --firm firm_A --no-narrative   # Skip LLM narrative
+    python main.py --firm firm_A
+    python main.py --firm firm_B
 
-The firm config file (config/<firm_id>.json) drives all computation differences
-between firms — no engine code changes needed (constraint 5).
+Narrative (Google Gemini, free):
+    export GEMINI_API_KEY=your_key   # auto-enables narrative
+    # Free key: https://aistudio.google.com/app/apikey
+
+Docker:
+    docker compose up
+    GEMINI_API_KEY=your_key docker compose up
 """
-import argparse
-import json
-import os
-import sys
-
+import argparse, json, os, sys
 BASE_DIR = os.path.dirname(__file__)
 sys.path.insert(0, BASE_DIR)
 
@@ -26,109 +26,79 @@ from engine.audit import log_event
 
 ANSWER_KEYS = {
     "firm_A": os.path.join(BASE_DIR, "sample_docs", "firm_A_answer_key.xlsx"),
-    # Firm B uses same key structure; for this submission Firm B's differing
-    # figures are validated in the reconciliation output (not a separate xlsx)
     "firm_B": os.path.join(BASE_DIR, "sample_docs", "firm_B_answer_key.xlsx"),
 }
 
-
-def load_firm_config(firm_id: str) -> dict:
-    config_path = os.path.join(BASE_DIR, "config", f"{firm_id}.json")
-    if not os.path.exists(config_path):
-        print(f"ERROR: config/{firm_id}.json not found")
-        sys.exit(1)
-    with open(config_path) as f:
-        return json.load(f)
-
+def load_firm_config(firm_id):
+    path = os.path.join(BASE_DIR, "config", f"{firm_id}.json")
+    if not os.path.exists(path):
+        print(f"ERROR: config/{firm_id}.json not found"); sys.exit(1)
+    with open(path) as f: return json.load(f)
 
 def main():
     parser = argparse.ArgumentParser(description="InterOpera Compliance Report Engine")
-    parser.add_argument("--firm", default="firm_A", help="Firm ID (firm_A or firm_B)")
-    parser.add_argument("--no-narrative", action="store_true", help="Skip LLM narrative generation")
+    parser.add_argument("--firm", default="firm_A", help="Firm ID: firm_A or firm_B")
     args = parser.parse_args()
-
     firm_id = args.firm
+    has_key = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+
     print(f"\n{'='*60}")
     print(f"InterOpera Compliance Report Engine")
-    print(f"Firm: {firm_id}")
+    print(f"Firm     : {firm_id}")
+    print(f"Narrative: {'enabled (GEMINI_API_KEY set)' if has_key else 'skipped (set GEMINI_API_KEY to enable)'}")
     print(f"{'='*60}\n")
 
-    # ── 1. Load firm configuration ──────────────────────────────────────────
+    # 1. Config
     firm_config = load_firm_config(firm_id)
-    print(f"[1/6] Loaded config: {firm_config['firm_name']}")
+    print(f"[1/6] Config: {firm_config['firm_name']}")
     log_event("CONFIG_LOADED", {"firm_id": firm_id, "config": firm_config}, firm_id=firm_id)
 
-    # ── 2. Build knowledge graph ─────────────────────────────────────────────
-    print("[2/6] Building knowledge graph from guidelines + holdings...")
+    # 2. Graph
+    print("[2/6] Building knowledge graph...")
     G = build_graph()
-    node_count = G.number_of_nodes()
-    edge_count = G.number_of_edges()
-    print(f"      Graph: {node_count} nodes, {edge_count} edges")
-    log_event("GRAPH_BUILT", {
-        "node_count": node_count,
-        "edge_count": edge_count,
-        "nodes": list(G.nodes()),
-    }, firm_id=firm_id)
+    print(f"      {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    log_event("GRAPH_BUILT", {"node_count": G.number_of_nodes(), "edge_count": G.number_of_edges()}, firm_id=firm_id)
 
-    # ── 3. Compute figures (deterministic, graph-traversal only) ────────────
-    print("[3/6] Computing figures by graph traversal (no LLM in this path)...")
+    # 3. Compute (NO LLM)
+    print("[3/6] Computing figures by graph traversal (no LLM)...")
     figures = compute_all_figures(G, firm_config)
-    print(f"      Computed {len(figures)} figures")
-    log_event("FIGURES_COMPUTED", {
-        "firm_id": firm_id,
-        "figure_count": len(figures),
-        "figures": figures,
-    }, firm_id=firm_id)
+    print(f"      {len(figures)} figures computed")
+    log_event("FIGURES_COMPUTED", {"figures": figures}, firm_id=firm_id)
 
-    # ── 4. Generate narrative (LLM-only, no numbers may be introduced) ──────
-    narrative = ""
-    firewall_result = {}
-    if not args.no_narrative:
-        print("[4/6] Generating LLM narrative commentary...")
+    # 4. Narrative (LLM — only if key present, skipped gracefully on failure)
+    narrative, firewall_result = "", {}
+    if has_key:
+        print("[4/6] Generating narrative (Gemini)...")
         narrative = generate_narrative(figures, firm_config)
-        firewall_result = firewall_check(narrative, figures)
-        fw_status = "PASSED" if firewall_result["passed"] else "FAILED"
-        print(f"      Firewall check: {fw_status}")
-        if not firewall_result["passed"]:
-            print(f"      Violations: {firewall_result['violations']}")
-        log_event("NARRATIVE_GENERATED", {
-            "narrative": narrative,
-            "firewall": firewall_result,
-        }, firm_id=firm_id)
+        if narrative and not narrative.startswith("["):
+            firewall_result = firewall_check(narrative, figures)
+            fw = "✓ PASSED" if firewall_result["passed"] else "✗ FAILED"
+            print(f"      Narrative generated. Firewall: {fw}")
+            if not firewall_result["passed"]:
+                print(f"      Violations: {firewall_result['violations']}")
+            log_event("NARRATIVE_GENERATED", {"narrative": narrative, "firewall": firewall_result}, firm_id=firm_id)
+        else:
+            print("      Narrative skipped (API unavailable or rate-limited)")
+            narrative = ""  # ensure nothing bad goes into the xlsx
+            log_event("NARRATIVE_SKIPPED", {"reason": "api_error_or_rate_limit"}, firm_id=firm_id)
     else:
-        print("[4/6] Narrative skipped (--no-narrative)")
-        log_event("NARRATIVE_SKIPPED", {}, firm_id=firm_id)
+        print("[4/6] Narrative skipped (GEMINI_API_KEY not set)")
+        log_event("NARRATIVE_SKIPPED", {"reason": "no_api_key"}, firm_id=firm_id)
 
-    # ── 5. Write report XLSX ────────────────────────────────────────────────
+    # 5. Write report
     print("[5/6] Writing report XLSX...")
-    output_path = write_report(figures, firm_id, narrative)
-    print(f"      Report: {output_path}")
-    log_event("REPORT_WRITTEN", {"output_path": output_path}, firm_id=firm_id)
+    out = write_report(figures, firm_id, narrative)
+    print(f"      → {out}")
+    log_event("REPORT_WRITTEN", {"output_path": out}, firm_id=firm_id)
 
-    # ── 6. Reconcile against answer key ─────────────────────────────────────
+    # 6. Reconcile
     print("[6/6] Reconciling against answer key...")
-    answer_key_path = ANSWER_KEYS.get(firm_id, ANSWER_KEYS["firm_A"])
-    recon_result = reconcile(figures, answer_key_path, narrative, firewall_result)
-    log_event("RECONCILIATION_COMPLETE", recon_result, firm_id=firm_id)
+    recon = reconcile(figures, ANSWER_KEYS.get(firm_id, ANSWER_KEYS["firm_A"]), narrative, firewall_result)
+    log_event("RECONCILIATION_COMPLETE", recon, firm_id=firm_id)
+    print_reconciliation_report(recon)
 
-    print_reconciliation_report(recon_result)
-
-    # ── Print all computed figures with graph paths ──────────────────────────
-    print("\n--- Computed Figures (with graph paths) ---\n")
-    for f in figures:
-        print(f"Figure : {f['figure']}")
-        print(f"Value  : {f['value']}")
-        print(f"Status : {f['status']}")
-        print(f"Limit  : {f['limit']}")
-        print(f"Util   : {f['utilization']}")
-        print(f"Path   : {f['graph_path'][:120]}...")
-        cit = f.get("citation", {})
-        print(f"Cite   : {cit.get('source_doc')} p{cit.get('page')} [{cit.get('chunk_id')}]")
-        print()
-
-    print(f"Done. Report saved to: {output_path}")
-    log_event("RUN_COMPLETE", {"firm_id": firm_id, "report": output_path}, firm_id=firm_id)
-
+    log_event("RUN_COMPLETE", {"firm_id": firm_id, "report": out}, firm_id=firm_id)
+    print(f"Report saved to: {out}\n")
 
 if __name__ == "__main__":
     main()

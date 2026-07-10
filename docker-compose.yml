@@ -1,7 +1,7 @@
 services:
   firm_a:
     build: .
-    command: python main.py --firm firm_A --no-narrative
+    command: python main.py --firm firm_A
     volumes:
       - ./reports:/app/reports
       - ./audit:/app/audit
@@ -10,7 +10,7 @@ services:
 
   firm_b:
     build: .
-    command: python main.py --firm firm_B --no-narrative
+    command: python main.py --firm firm_B
     volumes:
       - ./reports:/app/reports
       - ./audit:/app/audit

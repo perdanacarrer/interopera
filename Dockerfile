@@ -7,5 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Default: run Firm A. Override with: docker compose run app python main.py --firm firm_B
-CMD ["python", "main.py", "--firm", "firm_A", "--no-narrative"]
+# Narrative is auto-enabled if GEMINI_API_KEY is set in environment.
+# If key is absent, narrative is skipped gracefully — no crash.
+CMD ["python", "main.py", "--firm", "firm_A"]
