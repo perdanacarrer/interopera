@@ -16,3 +16,6 @@ services:
       - ./audit:/app/audit
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      firm_a:
+        condition: service_completed_successfully

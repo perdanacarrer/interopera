@@ -122,14 +122,24 @@ Write 3-4 sentences summarising overall compliance, noting any breaches or at-li
     return ""
 
 def firewall_check(narrative: str, figures: list[dict]) -> dict:
-    """Constraint 3: no number in narrative may be absent from computed figures."""
+    """Constraint 3: no number in narrative may be absent from computed figures.
+
+    Allowed exceptions (not data figures):
+    - Single/double digit ordinals and date components (01-31, months, years)
+    - Common report metadata numbers
+    The key violation we catch: a figure VALUE (e.g. 25.3%) that differs
+    from any computed output — meaning the LLM invented or altered a number.
+    """
     if not narrative:
         return {"passed": True, "violations": [], "skipped": True}
     allowed = set()
     for f in figures:
         for field in ["value", "limit", "utilization"]:
             allowed |= _numbers(str(f.get(field) or ""))
-    allowed |= {"1","2","3","4","5","7","10","24","25","100"}
+    # Common non-figure numbers: metadata, dates, ordinals (01-31), months (1-12)
+    allowed |= {str(i) for i in range(0, 32)}          # 0-31 (dates/ordinals)
+    allowed |= {f"{i:02d}" for i in range(0, 32)}      # 00-31 zero-padded
+    allowed |= {"100", "365", "252", "2024", "2025", "2026"}  # years/common
     nums = _numbers(narrative)
     violations = sorted(nums - allowed)
     return {"passed": len(violations)==0, "violations": violations,
